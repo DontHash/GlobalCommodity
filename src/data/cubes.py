@@ -25,6 +25,7 @@ class TradeCubes:
     meta: CubeMeta
     country_year_flow: pd.DataFrame
     category_year_flow: pd.DataFrame
+    country_category_year: pd.DataFrame
     commodity_totals: pd.DataFrame
     year_records: pd.DataFrame
 
@@ -32,6 +33,10 @@ class TradeCubes:
 def _build_cubes_from_df(df: pd.DataFrame) -> TradeCubes:
     cyf = df.groupby(["country_or_area", "year", "flow"], as_index=False)["trade_usd"].sum()
     catyf = df.groupby(["category", "year", "flow"], as_index=False)["trade_usd"].sum()
+    ccyy = df.groupby(["country_or_area", "category", "year", "flow"], as_index=False).agg(
+        trade_usd=("trade_usd", "sum"),
+        weight_kg=("weight_kg", "sum"),
+    )
     commodity_totals = (
         df.groupby(["comm_code", "commodity", "category"], as_index=False)
         .agg(trade_usd=("trade_usd", "sum"), records=("trade_usd", "count"))
@@ -51,13 +56,14 @@ def _build_cubes_from_df(df: pd.DataFrame) -> TradeCubes:
         categories=tuple(sorted(df["category"].unique())),
         flows=tuple(sorted(df["flow"].unique())),
     )
-    return TradeCubes(meta, cyf, catyf, commodity_totals, year_records)
+    return TradeCubes(meta, cyf, catyf, ccyy, commodity_totals, year_records)
 
 
 def _persist_cubes(cubes: TradeCubes) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cubes.country_year_flow.to_parquet(OUTPUT_DIR / "cube_country_year_flow.parquet", index=False)
     cubes.category_year_flow.to_parquet(OUTPUT_DIR / "cube_category_year_flow.parquet", index=False)
+    cubes.country_category_year.to_parquet(OUTPUT_DIR / "cube_country_category_year.parquet", index=False)
     cubes.commodity_totals.to_parquet(OUTPUT_DIR / "cube_commodity_totals.parquet", index=False)
     cubes.year_records.to_parquet(OUTPUT_DIR / "cube_year_records.parquet", index=False)
     CUBES_PATH.touch()
@@ -69,6 +75,7 @@ def load_trade_cubes() -> TradeCubes:
     paths = {
         "cyf": OUTPUT_DIR / "cube_country_year_flow.parquet",
         "catyf": OUTPUT_DIR / "cube_category_year_flow.parquet",
+        "ccyy": OUTPUT_DIR / "cube_country_category_year.parquet",
         "ct": OUTPUT_DIR / "cube_commodity_totals.parquet",
         "yr": OUTPUT_DIR / "cube_year_records.parquet",
     }
@@ -76,6 +83,7 @@ def load_trade_cubes() -> TradeCubes:
     if CUBES_PATH.exists() and all(p.exists() and p.stat().st_mtime >= source_mtime for p in paths.values()):
         cyf = pd.read_parquet(paths["cyf"])
         catyf = pd.read_parquet(paths["catyf"])
+        ccyy = pd.read_parquet(paths["ccyy"])
         ct = pd.read_parquet(paths["ct"])
         yr = pd.read_parquet(paths["yr"])
         meta = CubeMeta(
@@ -85,7 +93,7 @@ def load_trade_cubes() -> TradeCubes:
             categories=tuple(sorted(catyf["category"].unique())),
             flows=tuple(sorted(cyf["flow"].unique())),
         )
-        return TradeCubes(meta, cyf, catyf, ct, yr)
+        return TradeCubes(meta, cyf, catyf, ccyy, ct, yr)
 
     df = _read_source_dataframe()
     cubes = _build_cubes_from_df(df)

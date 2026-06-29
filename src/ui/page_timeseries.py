@@ -29,7 +29,16 @@ def render(view: FilteredView, filters: dict) -> None:
         fig = bar_chart(yoy, "year", "yoy_pct", title="Year-over-year change (%)")
         fig.update_traces(marker_color=colors)
         st.plotly_chart(fig, width="stretch")
-        st.dataframe(yearly[["year", "trade_trillions", "yoy_pct"]], width="stretch", hide_index=True)
+        st.dataframe(
+            yearly[["year", "trade_trillions", "yoy_pct"]].round(2),
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "year": st.column_config.NumberColumn("Year", format="%d"),
+                "trade_trillions": st.column_config.NumberColumn("Trade ($T)", format="%.2f"),
+                "yoy_pct": st.column_config.NumberColumn("YoY (%)", format="%.1f"),
+            },
+        )
 
     with tab3:
         flow_cols = [c for c in flow.columns if c != "year"]

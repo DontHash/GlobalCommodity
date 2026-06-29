@@ -69,11 +69,12 @@ def render_data_footer(view, filters: dict) -> None:
     src = Path(DATA_PATH).name
     mtime = datetime.fromtimestamp(DATA_PATH.stat().st_mtime).strftime("%Y-%m-%d")
     rows = f"{p['rows']:,} records" if p["rows"] else "aggregated view"
+    preset = filters.get("preset", "Custom")
     st.caption(
-        f"**Source:** UN Comtrade ({src}, indexed {mtime}) · "
+        f"**Source:** UN Comtrade · **Indexed:** {mtime} · **Preset:** {preset} · "
         f"**Period:** {filters['year_range'][0]}–{filters['year_range'][1]} · "
         f"**Scope:** {rows}, {p['countries']} countries · "
-        f"**Aggregate bucket excluded:** {filters['exclude_aggregate']}"
+        f"**Excl. aggregate bucket:** {filters['exclude_aggregate']}"
     )
 
 
@@ -81,3 +82,25 @@ def section(title: str, hint: str = "") -> None:
     st.markdown(f'<p class="section-label">{title}</p>', unsafe_allow_html=True)
     if hint:
         st.caption(hint)
+
+
+def render_scope_banner(filters: dict, view) -> None:
+    """Compact context strip — active period, scope, and data grain."""
+    preset = filters.get("preset", "Custom")
+    y0, y1 = filters["year_range"]
+    parts = [f"**{preset}**", f"{y0}–{y1}"]
+    if filters.get("countries"):
+        parts.append(f"{len(filters['countries'])} countries")
+    if filters.get("categories"):
+        parts.append(f"{len(filters['categories'])} categories")
+    flows = filters.get("flows")
+    if flows and len(flows) < 4:
+        parts.append(", ".join(flows))
+    if view.has_country_filter or view.has_category_filter:
+        parts.append("filtered view")
+    st.markdown(
+        f'<p style="color:{UI["muted"]};font-size:0.82rem;margin:0 0 1rem 0;">'
+        f'{" · ".join(parts)} · yearly totals · USD trade value'
+        f"</p>",
+        unsafe_allow_html=True,
+    )

@@ -172,3 +172,36 @@ def scatter_clusters(
     fig.add_vline(x=0, line_width=0.5, line_color="#94a3b8")
     _base_layout(fig, title)
     return fig
+
+
+def yoy_bar_chart(df: pd.DataFrame, x: str, y: str, title: str = "") -> go.Figure:
+    colors = [COLOR_SEQUENCE[2] if v >= 0 else COLOR_SEQUENCE[3] for v in df[y]]
+    fig = go.Figure(
+        go.Bar(x=df[x], y=df[y], marker_color=colors, marker_line_width=0)
+    )
+    fig.add_hline(y=0, line_width=0.5, line_color="#94a3b8")
+    _base_layout(fig, title)
+    fig.update_layout(yaxis_title="YoY change (%)", hovermode="x unified")
+    return fig
+
+
+def driver_waterfall(drivers: pd.DataFrame, title: str = "Export change by category") -> go.Figure:
+    """Waterfall of category contributions to export change."""
+    df = drivers.sort_values("value_change_b", key=abs, ascending=False).copy()
+    measures = ["relative"] * len(df) + ["total"]
+    x_labels = df["short_label"].tolist() + ["Net"]
+    y_vals = df["value_change_b"].tolist() + [df["value_change_b"].sum()]
+    fig = go.Figure(
+        go.Waterfall(
+            x=x_labels,
+            y=y_vals,
+            measure=measures,
+            increasing={"marker": {"color": COLOR_SEQUENCE[2]}},
+            decreasing={"marker": {"color": COLOR_SEQUENCE[3]}},
+            totals={"marker": {"color": COLOR_SEQUENCE[0]}},
+            connector={"line": {"color": "#cbd5e1"}},
+        )
+    )
+    _base_layout(fig, title)
+    fig.update_layout(yaxis_title="Change (billions USD)", showlegend=False)
+    return fig

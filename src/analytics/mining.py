@@ -41,16 +41,37 @@ def change_points(series: np.ndarray, years: np.ndarray, pen: float = 10.0) -> l
 
 
 def arima_forecast(yearly: pd.DataFrame, train_end_year: int) -> pd.DataFrame:
+    """ARIMA counterfactual; returns empty frame with schema if not enough data."""
+    empty = pd.DataFrame(
+        columns=["year", "trade_trillions", "forecast_trillions", "gap_trillions", "trade_usd"]
+    )
+    if yearly.empty:
+        return empty
+
     series = yearly.sort_values("year")
     train = series.loc[series["year"] <= train_end_year, "trade_trillions"].values
     future = series.loc[series["year"] > train_end_year]
     if len(train) < 3 or future.empty:
-        return pd.DataFrame()
+        return empty
+
     forecast = ARIMA(train, order=(1, 1, 1)).fit().forecast(len(future))
     out = future.copy()
     out["forecast_trillions"] = forecast
     out["gap_trillions"] = out["trade_trillions"] - out["forecast_trillions"]
     return out
+
+
+def pick_arima_train_end(yearly: pd.DataFrame, preferred: int = 2007) -> int | None:
+    """Pick a training cutoff that works with the filtered year range."""
+    if yearly.empty:
+        return None
+    years = sorted(int(y) for y in yearly["year"].unique())
+    before_preferred = [y for y in years if y <= preferred]
+    if len(before_preferred) >= 3:
+        return max(before_preferred)
+    if len(years) >= 4:
+        return years[max(2, int(len(years) * 0.55) - 1)]
+    return None
 
 
 def rf_yoy_surprise(yearly: pd.DataFrame, train_end_year: int = 2007) -> pd.DataFrame:

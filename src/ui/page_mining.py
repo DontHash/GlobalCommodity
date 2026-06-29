@@ -52,17 +52,23 @@ def render(view: FilteredView, filters: dict) -> None:
     with tab2:
         train_end = st.number_input("ARIMA train through", value=min(2007, view.year_range[1] - 1))
         if st.button("Run ARIMA forecast", type="primary"):
-            counter = arima_forecast(yearly, int(train_end))
-            st.dataframe(counter.round(2), width="stretch", hide_index=True)
-            st.plotly_chart(
-                counterfactual_chart(
-                    counter["year"].tolist(),
-                    counter["trade_trillions"].tolist(),
-                    counter["forecast_trillions"].tolist(),
-                    f"Actual vs forecast (train ≤ {train_end})",
-                ),
-                width="stretch",
-            )
+            from src.analytics.mining import pick_arima_train_end
+
+            train_end = pick_arima_train_end(yearly, int(train_end)) or int(train_end)
+            counter = arima_forecast(yearly, train_end)
+            if counter.empty:
+                st.warning("Not enough years to forecast. Widen the year range.")
+            else:
+                st.dataframe(counter.round(2), width="stretch", hide_index=True)
+                st.plotly_chart(
+                    counterfactual_chart(
+                        counter["year"].tolist(),
+                        counter["trade_trillions"].tolist(),
+                        counter["forecast_trillions"].tolist(),
+                        f"Actual vs forecast (train ≤ {train_end})",
+                    ),
+                    width="stretch",
+                )
         if st.button("Run RF YoY surprise"):
             st.dataframe(rf_yoy_surprise(yearly, int(train_end)).round(1), width="stretch", hide_index=True)
         pen = st.slider("Change-point penalty", 1.0, 30.0, 10.0)

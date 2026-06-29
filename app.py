@@ -20,12 +20,14 @@ from src.ui import (
     page_commodities,
     page_countries,
     page_explorer,
+    page_growth,
     page_mining,
     page_overview,
     page_story,
     page_timeseries,
     page_why,
 )
+from src.ui.components import render_scope_banner
 from src.ui.sidebar import render_filters
 from src.ui.styles import apply_styles
 
@@ -41,11 +43,12 @@ PAGES = {
     "① Executive summary": page_overview,
     "② Trends": page_timeseries,
     "③ Regions": page_countries,
-    "④ Products": page_commodities,
-    "⑤ Why it changed": page_why,
-    "⑥ Export data": page_explorer,
-    "⑦ Advanced models": page_mining,
-    "Case study": page_story,
+    "④ Country growth": page_growth,
+    "⑤ Products": page_commodities,
+    "⑥ Why it changed": page_why,
+    "⑦ Export data": page_explorer,
+    "⑧ Advanced models": page_mining,
+    "⑨ Case study": page_story,
 }
 
 
@@ -76,6 +79,7 @@ def main() -> None:
     rows_txt = f"{p['rows']:,} rec · " if p["rows"] else ""
     st.sidebar.caption(f"{rows_txt}{p['countries']} countries · ${p['total_trade_usd']/1e12:.2f}T")
 
+    render_scope_banner(filters, view)
     PAGES[page_name].render(view, filters)
 
 

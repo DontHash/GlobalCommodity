@@ -14,6 +14,7 @@ from src.ui.components import (
     section,
 )
 from src.ui.styles import page_header
+from src.ui.tables import show_category_changes, show_country_changes
 from src.viz.charts import bar_chart, line_chart
 
 
@@ -25,18 +26,23 @@ def render(view: FilteredView, filters: dict) -> None:
     render_questions_expander()
 
     yearly = view.yearly_summary()
-    years = yearly["year"].tolist() if not yearly.empty else []
+    if yearly.empty:
+        st.warning("No data for this filter. Adjust the sidebar year range.")
+        render_data_footer(view, filters)
+        return
+
+    years = yearly["year"].tolist()
     focus = st.selectbox(
         "Focus year for KPIs & alerts",
         options=years,
-        index=len(years) - 1 if years else 0,
-        help="Compare this year against the prior year and your selected range.",
+        index=len(years) - 1,
+        help="Compared against the prior year and your selected range.",
     )
 
     section("1 · Are we growing or declining?")
     render_kpi_row(compute_executive_kpis(view, int(focus)))
 
-    section("2 · What needs attention?", "Exceptions based on thresholds and historical patterns")
+    section("2 · What needs attention?")
     render_alerts(detect_alerts(view, int(focus)))
 
     section("3 · How has trade moved over time?")
@@ -47,7 +53,7 @@ def render(view: FilteredView, filters: dict) -> None:
 
     col_l, col_r = st.columns(2)
     with col_l:
-        section("4a · Top countries", "Who contributes most in this filter?")
+        section("4a · Top countries")
         top_c = view.country_totals().head(10)
         top_c["trade_billions"] = top_c["trade_usd"] / 1e9
         st.plotly_chart(
@@ -61,7 +67,7 @@ def render(view: FilteredView, filters: dict) -> None:
             width="stretch",
         )
     with col_r:
-        section("4b · Top categories", "Which product groups dominate?")
+        section("4b · Top categories")
         top_cat = view.category_totals(top_n=10)
         top_cat["trade_billions"] = top_cat["trade_usd"] / 1e9
         st.plotly_chart(
@@ -75,41 +81,50 @@ def render(view: FilteredView, filters: dict) -> None:
             width="stretch",
         )
 
-    section("5 · Why did trade change?", "Drill into drivers between two years")
+    section("5 · Why did trade change?")
     if len(years) >= 2:
         c1, c2 = st.columns(2)
         with c1:
-            y_from = st.selectbox("From year", years, index=max(0, len(years) - 3))
+            y_from = st.selectbox("From year", years, index=max(0, len(years) - 3), key="sum_from")
         with c2:
-            y_to = st.selectbox("To year", years, index=len(years) - 1)
+            y_to = st.selectbox("To year", years, index=len(years) - 1, key="sum_to")
         if y_from < y_to:
             drivers = root_cause_drivers(view, int(y_from), int(y_to))
+            period = f"{y_from} → {y_to}"
             if drivers["total_change_pct"] is not None:
-                st.markdown(
-                    f"**Total trade change {y_from}→{y_to}: {drivers['total_change_pct']:+.1f}%**"
+                st.metric("Total trade change", f"{drivers['total_change_pct']:+.1f}%", period)
+            if drivers.get("all_categories_declined"):
+                st.caption(
+                    "All categories declined in this period — 'gains' shows smallest losses, not true growth."
                 )
             d1, d2 = st.columns(2)
             with d1:
-                st.markdown("**Largest category declines**")
-                st.dataframe(
-                    drivers["top_category_declines"][["category", "change_billions", "change_pct"]],
-                    width="stretch",
-                    hide_index=True,
+                show_category_changes(
+                    drivers["top_category_declines"],
+                    "Largest category declines",
+                    period,
+                    empty_message="No declining categories in this period.",
                 )
             with d2:
-                st.markdown("**Largest category gains**")
-                st.dataframe(
-                    drivers["top_category_gains"][["category", "change_billions", "change_pct"]],
-                    width="stretch",
-                    hide_index=True,
+                show_category_changes(
+                    drivers["top_category_gains"],
+                    "Largest category gains",
+                    period,
+                    empty_message="No categories grew in this period (all declined).",
                 )
             d3, d4 = st.columns(2)
             with d3:
-                st.markdown("**Countries that lost the most**")
-                st.dataframe(drivers["top_country_declines"], width="stretch", hide_index=True)
+                show_country_changes(
+                    drivers["top_country_declines"],
+                    "Countries that lost the most",
+                    period,
+                )
             with d4:
-                st.markdown("**Countries that gained the most**")
-                st.dataframe(drivers["top_country_gains"], width="stretch", hide_index=True)
+                show_country_changes(
+                    drivers["top_country_gains"],
+                    "Countries that gained the most",
+                    period,
+                )
         else:
             st.info("Select a later 'To year' than 'From year'.")
 

@@ -9,6 +9,7 @@ import streamlit as st
 
 from config import AGGREGATE_CATEGORY
 from src.data.cubes import TradeCubes, load_trade_cubes
+from src.utils.labels import category_label
 
 
 @dataclass
@@ -19,6 +20,7 @@ class FilteredView:
     exclude_aggregate: bool
     country_year_flow: pd.DataFrame
     category_year_flow: pd.DataFrame
+    country_category_year: pd.DataFrame
     commodity_totals: pd.DataFrame
     year_records: pd.DataFrame
     has_country_filter: bool = False
@@ -87,14 +89,23 @@ class FilteredView:
             .sort_values("trade_usd", ascending=False)
         )
 
-    def country_year(self, countries: list[str] | None = None) -> pd.DataFrame:
+    def country_year(self, countries: list[str] | None = None, flow: str | None = None) -> pd.DataFrame:
         data = self.country_year_flow
+        if flow:
+            data = data[data["flow"] == flow]
         if countries:
             data = data[data["country_or_area"].isin(countries)]
         return (
             data.groupby(["year", "country_or_area"], as_index=False)["trade_usd"]
             .sum()
         )
+
+    def country_export_series(self, countries: list[str] | None = None) -> pd.DataFrame:
+        """Export value trajectory per country (billions USD)."""
+        out = self.country_year(countries=countries, flow="Export")
+        out["trade_billions"] = out["trade_usd"] / 1e9
+        out["yoy_pct"] = out.groupby("country_or_area")["trade_usd"].pct_change() * 100
+        return out.sort_values(["country_or_area", "year"])
 
     def trade_balance(self) -> pd.DataFrame:
         exp = (
@@ -118,7 +129,7 @@ class FilteredView:
             .sum()
             .sort_values("trade_usd", ascending=False)
         )
-        out["short_label"] = out["category"].str.replace(r"^\d+_", "", regex=True).str[:40]
+        out["short_label"] = out["category"].map(category_label)
         return out.head(top_n) if top_n else out
 
     def category_by_year(self, categories: list[str] | None = None) -> pd.DataFrame:
@@ -175,16 +186,29 @@ class FilteredView:
         out["trade_millions"] = out["trade_usd"] / 1e6
         return out
 
-    def category_shock_delta(self, y1: int, y2: int, top_n: int = 10) -> pd.DataFrame:
+    def category_change_table(self, y1: int, y2: int) -> pd.DataFrame:
+        """Full category delta table between two years (signed)."""
         b = self.category_year_flow[self.category_year_flow["year"] == y1]
         a = self.category_year_flow[self.category_year_flow["year"] == y2]
         b_tot = b.groupby("category")["trade_usd"].sum()
         a_tot = a.groupby("category")["trade_usd"].sum()
-        delta = (a_tot - b_tot).sort_values()
-        out = pd.DataFrame({"change_usd": delta, "change_billions": delta / 1e9})
-        out["change_pct"] = ((a_tot / b_tot) - 1).reindex(delta.index) * 100
-        out["short_label"] = out.index.str.replace(r"^\d+_", "", regex=True).str[:45]
-        return out.head(top_n)
+        common = b_tot.index.intersection(a_tot.index)
+        delta = a_tot[common] - b_tot[common]
+        out = pd.DataFrame(
+            {
+                "category": delta.index,
+                "change_usd": delta.values,
+                "change_billions": delta.values / 1e9,
+                "change_pct": ((a_tot[common] / b_tot[common]) - 1).values * 100,
+            }
+        )
+        out["short_label"] = out["category"].map(category_label)
+        return out.sort_values("change_billions")
+
+    def category_shock_delta(self, y1: int, y2: int, top_n: int = 10) -> pd.DataFrame:
+        """Largest declines only (legacy helper)."""
+        table = self.category_change_table(y1, y2)
+        return table.nsmallest(top_n, "change_billions")
 
     def oil_yearly(self, oil_category: str) -> pd.DataFrame:
         oil = (
@@ -240,6 +264,15 @@ def build_filtered_view(
         exclude_aggregate,
         category_col="category",
     )
+    ccyy = _filter_cube_frame(
+        cubes.country_category_year,
+        year_range,
+        countries,
+        categories,
+        flows,
+        exclude_aggregate,
+        category_col="category",
+    )
     ct = cubes.commodity_totals
     if categories:
         ct = ct[ct["category"].isin(categories)]
@@ -251,6 +284,7 @@ def build_filtered_view(
         exclude_aggregate=exclude_aggregate,
         country_year_flow=cyf,
         category_year_flow=catyf,
+        country_category_year=ccyy,
         commodity_totals=ct,
         year_records=yr,
         has_country_filter=bool(countries),

@@ -6,8 +6,9 @@ import streamlit as st
 
 from config import TOP_N
 from src.data.context import FilteredView
-from src.ui.components import render_data_footer
+from src.ui.components import render_data_footer, section
 from src.ui.styles import page_header
+from src.utils.labels import category_label
 from src.viz.charts import line_chart, treemap_categories
 
 
@@ -25,8 +26,9 @@ def render(view: FilteredView, filters: dict) -> None:
         pick = st.multiselect("Plot categories", all_cats, default=all_cats[:5], max_selections=8)
         if pick:
             trend = view.category_by_year(pick)
+            trend["label"] = trend["category"].map(category_label)
             st.plotly_chart(
-                line_chart(trend, "year", "trade_billions", color="category", title="Category trends"),
+                line_chart(trend, "year", "trade_billions", color="label", title="Category trends"),
                 width="stretch",
             )
 

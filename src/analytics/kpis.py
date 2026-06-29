@@ -198,14 +198,22 @@ def detect_alerts(view, focus_year: int | None = None) -> list[dict]:
 
 
 def root_cause_drivers(view, year_from: int, year_to: int, top_n: int = 5) -> dict:
-    """Answer 'why did trade change?' — top country and category drivers."""
-    cat_delta = view.category_shock_delta(year_from, year_to, top_n=50)
+    """Top category/country gainers and losers (signed, not conflated)."""
+    cat_full = view.category_change_table(year_from, year_to)
+    cat_declines = cat_full[cat_full["change_billions"] < 0].nsmallest(top_n, "change_billions")
+    cat_gains = cat_full[cat_full["change_billions"] > 0].nlargest(top_n, "change_billions")
+
     country_from = view.country_year_flow[view.country_year_flow["year"] == year_from]
     country_to = view.country_year_flow[view.country_year_flow["year"] == year_to]
     c_from = country_from.groupby("country_or_area")["trade_usd"].sum()
     c_to = country_to.groupby("country_or_area")["trade_usd"].sum()
     common = c_from.index.intersection(c_to.index)
-    c_delta = ((c_to[common] - c_from[common]) / 1e9).sort_values()
+    c_delta = (c_to[common] - c_from[common]) / 1e9
+
+    country_declines = c_delta[c_delta < 0].nsmallest(top_n).reset_index()
+    country_declines.columns = ["country", "change_billions"]
+    country_gains = c_delta[c_delta > 0].nlargest(top_n).reset_index()
+    country_gains.columns = ["country", "change_billions"]
 
     yearly = view.yearly_summary()
     v_from = yearly.loc[yearly["year"] == year_from, "trade_trillions"]
@@ -214,19 +222,15 @@ def root_cause_drivers(view, year_from: int, year_to: int, top_n: int = 5) -> di
     if not v_from.empty and not v_to.empty and v_from.iloc[0] > 0:
         total_change_pct = (v_to.iloc[0] / v_from.iloc[0] - 1) * 100
 
-    declines = c_delta.head(top_n).reset_index()
-    declines.columns = ["country", "change_billions"]
-    gains = c_delta.tail(top_n).iloc[::-1].reset_index()
-    gains.columns = ["country", "change_billions"]
-
     return {
         "year_from": year_from,
         "year_to": year_to,
         "total_change_pct": total_change_pct,
-        "top_category_declines": cat_delta.head(top_n).reset_index(),
-        "top_category_gains": cat_delta.tail(top_n).iloc[::-1].reset_index(),
-        "top_country_declines": declines,
-        "top_country_gains": gains,
+        "top_category_declines": cat_declines,
+        "top_category_gains": cat_gains,
+        "top_country_declines": country_declines,
+        "top_country_gains": country_gains,
+        "all_categories_declined": cat_gains.empty and not cat_declines.empty,
     }
 
 

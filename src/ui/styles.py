@@ -72,12 +72,24 @@ def apply_styles() -> None:
         }}
 
         .section-label {{
-            font-size: 0.7rem;
-            font-weight: 600;
+            font-size: 0.72rem;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: {UI['muted']};
-            margin: 1rem 0 0.5rem 0;
+            letter-spacing: 0.1em;
+            color: {UI['accent_dark']};
+            margin: 1.5rem 0 0.35rem 0;
+            padding-bottom: 0.25rem;
+            border-bottom: 2px solid {UI['border']};
+        }}
+
+        [data-testid="stDataFrame"] {{
+            border: 1px solid {UI['border']};
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+
+        .stAlert {{
+            border-radius: 8px;
         }}
 
         [data-testid="stRadio"] > div {{
@@ -92,6 +104,20 @@ def apply_styles() -> None:
             border-radius: 8px 8px 0 0;
             padding: 0.5rem 1rem;
             font-weight: 500;
+        }}
+
+        [data-testid="stSidebar"] .stRadio label {{
+            font-size: 0.9rem;
+            padding: 0.35rem 0;
+        }}
+
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
+            margin-bottom: 0.25rem;
+        }}
+
+        hr {{
+            margin: 1rem 0;
+            border-color: {UI['border']};
         }}
         </style>
         """,
