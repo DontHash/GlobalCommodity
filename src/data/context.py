@@ -107,6 +107,22 @@ class FilteredView:
         out["yoy_pct"] = out.groupby("country_or_area")["trade_usd"].pct_change() * 100
         return out.sort_values(["country_or_area", "year"])
 
+    def country_export_trajectory(self, country: str) -> pd.DataFrame:
+        """Export value and shipped weight per year for one country."""
+        data = self.country_category_year[
+            (self.country_category_year["country_or_area"] == country)
+            & (self.country_category_year["flow"] == "Export")
+        ]
+        if data.empty:
+            return pd.DataFrame(columns=["year", "trade_usd", "trade_billions", "weight_kg", "weight_kt"])
+        out = data.groupby("year", as_index=False).agg(
+            trade_usd=("trade_usd", "sum"),
+            weight_kg=("weight_kg", "sum"),
+        )
+        out["trade_billions"] = out["trade_usd"] / 1e9
+        out["weight_kt"] = out["weight_kg"] / 1e6
+        return out.sort_values("year")
+
     def trade_balance(self) -> pd.DataFrame:
         exp = (
             self.country_year_flow[self.country_year_flow["flow"] == "Export"]

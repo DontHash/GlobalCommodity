@@ -205,3 +205,68 @@ def driver_waterfall(drivers: pd.DataFrame, title: str = "Export change by categ
     _base_layout(fig, title)
     fig.update_layout(yaxis_title="Change (billions USD)", showlegend=False)
     return fig
+
+
+def target_forecast_chart(
+    actual: pd.DataFrame,
+    target_path: pd.DataFrame,
+    forecast: pd.DataFrame,
+    title: str,
+    y_axis_title: str,
+    baseline_year: int,
+) -> go.Figure:
+    """Historical exports, required path to target, and model forecast."""
+    fig = go.Figure()
+
+    act = actual.sort_values("year")
+    fig.add_trace(
+        go.Scatter(
+            x=act["year"],
+            y=act["value"],
+            name="Actual exports",
+            mode="lines+markers",
+            line=dict(color=COLOR_SEQUENCE[0], width=2.5),
+            marker=dict(size=7),
+        )
+    )
+
+    if not target_path.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=target_path["year"],
+                y=target_path["value"],
+                name="Required path to target",
+                mode="lines+markers",
+                line=dict(color=COLOR_SEQUENCE[4], width=2, dash="dash"),
+                marker=dict(size=6),
+            )
+        )
+
+    if not forecast.empty:
+        fc = forecast[forecast["year"] > baseline_year]
+        anchor = forecast[forecast["year"] == baseline_year]
+        if not anchor.empty:
+            fc = pd.concat([anchor, fc], ignore_index=True)
+        fig.add_trace(
+            go.Scatter(
+                x=fc["year"],
+                y=fc["value"],
+                name="Model forecast (5 yr)",
+                mode="lines+markers",
+                line=dict(color=COLOR_SEQUENCE[1], width=2, dash="dot"),
+                marker=dict(size=6, symbol="diamond"),
+            )
+        )
+
+    fig.add_vline(
+        x=baseline_year,
+        line_width=1,
+        line_dash="solid",
+        line_color="#94a3b8",
+        annotation_text="Baseline",
+        annotation_position="top",
+    )
+
+    _base_layout(fig, title)
+    fig.update_layout(yaxis_title=y_axis_title, hovermode="x unified")
+    return fig
