@@ -1,120 +1,119 @@
 # Global Commodity Trade Analytics
 
-React and FastAPI dashboard for exploring UN Comtrade commodity trade data (1988-2016). Python remains responsible for loading, filtering, aggregation, and analytics; React handles the user interface.
+Global Commodity Trade Analytics is an interactive dashboard for exploring international commodity trade data from 1988 to 2016. It helps users compare countries, study imports and exports, investigate growth and trade balance, understand product concentration, and run supporting analytical models.
 
-## Architecture
+## Live website
+
+The deployed dashboard is available at [global-commodity-dashboard.vercel.app](https://global-commodity-dashboard.vercel.app).
+
+
+## What the dashboard offers
+
+- Executive trade summary with trends, rankings, gains, and declines.
+- Regional comparison, country trade balance, and map-based exploration.
+- Country growth profiles, product diversification, and change drivers.
+- Product-level breakdowns, category trends, and commodity search.
+- A representative data preview and CSV export.
+- Advanced analysis including forecasting, anomalies, clustering, correlation, and concentration measures.
+
+## Technology
+
+The project has a React frontend and a Python FastAPI backend.
 
 ```text
-UN Comtrade CSV
-  -> Python validation, cached cubes, and analytics
-  -> FastAPI JSON endpoints
-  -> React + Tailwind CSS + Recharts
+Trade data / Parquet artifacts
+        ↓
+Python data processing and analytics
+        ↓
+FastAPI endpoints
+        ↓
+React dashboard
 ```
 
-The supported application is React + FastAPI only. The retired Streamlit renderer and its Python UI/chart modules have been removed.
+React is responsible for the interface, charts, filters, and page navigation. Python is responsible for data loading, validation, aggregation, analytics, and API responses.
 
-## Setup
+## Run locally
 
-```bash
+### Prerequisites
+
+- Python 3.12 or later
+- Node.js 20 or later
+- npm
+
+### 1. Install dependencies
+
+From the repository root:
+
+```powershell
 python -m pip install -r requirements.txt
 cd frontend
 npm install
+cd ..
 ```
 
-Place the dataset at `CSV Dataset/commodity_trade_statistics_data.csv`. Python creates validated Parquet and analytical cube caches under `outputs/`.
+### 2. Configure data access
 
-## Development
+For the deployed Parquet data, set these variables in the terminal that will run the backend:
 
-Run the API from the repository root:
+```powershell
+$env:DATA_BASE_URL = "https://bhvquuvpxslxofra.public.blob.vercel-storage.com/global-commodity/v2"
+$env:CORS_ORIGINS = "http://localhost:5173"
+```
 
-```bash
+Alternatively, place the original CSV at:
+
+```text
+CSV Dataset/commodity_trade_statistics_data.csv
+```
+
+The CSV is intentionally excluded from Git because it is large. When it is present, the backend can build and use local cached artifacts in `outputs/`.
+
+### 3. Start the backend
+
+Run this from the repository root:
+
+```powershell
 python -m uvicorn app:app --reload --port 8000
 ```
 
-Run React in another terminal:
+The API will be available at `http://localhost:8000`.
 
-```bash
+### 4. Start the frontend
+
+Open a second terminal and run:
+
+```powershell
 cd frontend
 npm run dev
 ```
 
-Open `http://localhost:5173`. Development CORS defaults to that origin and can be changed with `CORS_ORIGINS`.
+Open `http://localhost:5173` in your browser.
 
-## Production-style local run
+## Verify the project
 
-```bash
-cd frontend
-npm run build
-cd ..
-python -m uvicorn app:app --port 8000
-```
-
-FastAPI serves the compiled React application at `http://localhost:8000`.
-
-## Sections
-
-| Page | Purpose |
-|------|---------|
-| Executive summary | KPIs, alerts, trends, rankings, and root-cause summary |
-| Trends | Volume, year-over-year growth, and flow composition |
-| Regions | Country map, rankings, balance, and comparison |
-| Country growth | Growth profiles, product diversification, drivers, and targets |
-| Products | Category breakdown, trends, and commodity search |
-| Why it changed | Root-cause drivers, period comparison, and underperformers |
-| Data preview | Deterministic, paginated preview and CSV download |
-| Advanced models | Anomalies, forecasting, clustering, correlation, and oil association |
-| Case study | Narrative shock events and counterfactual analysis |
-
-## Verification
-
-```bash
-python -m unittest discover -s tests -v
-cd frontend
-npm run build
-```
-
-Detailed methodology and implementation notes are in [`improvement.md`](improvement.md).
-
-## Data note
-
-The source CSV (about 1.2 GB) is not included in this repository. Download it separately and place it in `CSV Dataset/`.
-
-For deployment, build the validated Parquet dataset and analytical cubes once:
+Run the backend tests:
 
 ```powershell
-python scripts/prepare_data_artifacts.py
+python -m unittest discover -s tests -v
 ```
 
-Production reads those artifacts from object storage through `DATA_BASE_URL`. Normal dashboard requests download only the compact analytical cubes; the detailed Parquet file is fetched lazily for data preview, commodity drill-down, and correlation.
+Build the frontend for production:
 
-## Vercel deployment
-
-The application uses two existing Vercel projects, one for the API and one for the dashboard. They are currently deployed from the local checkout but are **not yet connected to GitHub**.
-
-### Backend
-
-- Root Directory: repository root (`.`)
-- Framework: FastAPI (automatic detection through `app.py`)
-- Environment variables:
-
-```text
-DATA_BASE_URL=https://bhvquuvpxslxofra.public.blob.vercel-storage.com/global-commodity/v2
-CORS_ORIGINS=https://YOUR-FRONTEND.vercel.app
+```powershell
+cd frontend
+npm run build
 ```
 
-### Frontend
+## Deployment notes
 
-- Root Directory: `frontend`
-- Framework: Vite
-- Build Command: `npm run build`
-- Output Directory: `dist`
-- `frontend/vercel.json` proxies `/api/*` to the backend's stable URL, so no frontend environment variable or preview-specific CORS entry is needed. Update that destination if the backend project is moved.
+The application is deployed as two Vercel projects:
 
-Upload refreshed data after changing the source CSV with `powershell -ExecutionPolicy Bypass -File scripts/upload_data_artifacts.ps1`; the CLI reads the connected Blob-store token from the ignored `.env.local`. Do not commit the CSV, generated Parquet files, or credentials. Set a new `DATA_BASE_URL` version prefix when publishing a revised dataset so warm functions do not keep cached older artifacts.
+- `global-commodity-api` for the FastAPI backend.
+- `global-commodity-dashboard` for the Vite/React frontend.
 
-This GitHub repository belongs to a personal account. Vercel requires its owner—not a GitHub collaborator—to connect it for automatic Git-based deployments. The owner can join your Vercel team and connect the repository to these projects, or import it into their own Vercel account. A fork under your own GitHub account is another option for Git-connected projects you control.
+Production data is stored outside the repository as versioned Parquet artifacts. The backend uses `DATA_BASE_URL` to retrieve compact analytical cubes for normal dashboard requests and reads the detailed data lazily for previews and product-level analysis.
 
-Until Git is connected, the linked checkout can make preview deployments with `vercel deploy --scope notjustauser` from the repository root for the API, or from `frontend/` for the dashboard. A GitHub push is not yet an automatic Vercel deployment.
+Do not commit the original CSV, generated Parquet files, local environment files, build output, or object-storage credentials. The repository `.gitignore` already excludes them.
 
 ## About The Project
 
