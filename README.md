@@ -89,7 +89,7 @@ Production reads those artifacts from object storage through `DATA_BASE_URL`. No
 
 ## Vercel deployment
 
-This repository is deployed as two Vercel projects connected to the same GitHub repository.
+The application uses two existing Vercel projects, one for the API and one for the dashboard. They are currently deployed from the local checkout but are **not yet connected to GitHub**.
 
 ### Backend
 
@@ -114,7 +114,7 @@ Upload refreshed data after changing the source CSV with `powershell -ExecutionP
 
 This GitHub repository belongs to a personal account. Vercel requires its owner—not a GitHub collaborator—to connect it for automatic Git-based deployments. The owner can join your Vercel team and connect the repository to these projects, or import it into their own Vercel account. A fork under your own GitHub account is another option for Git-connected projects you control.
 
-Until Git is connected, deploy updates from the repository root with `vercel deploy --project global-commodity-api --scope notjustauser` or `vercel deploy --project global-commodity-dashboard --scope notjustauser`. The frontend project root directory remains `frontend`; both projects use this repository as their upload source. A GitHub push is not yet an automatic Vercel deployment.
+Until Git is connected, the linked checkout can make preview deployments with `vercel deploy --scope notjustauser` from the repository root for the API, or from `frontend/` for the dashboard. A GitHub push is not yet an automatic Vercel deployment.
 
 ## About The Project
 
