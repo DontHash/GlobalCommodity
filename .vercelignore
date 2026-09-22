@@ -1,0 +1,11 @@
+.git/
+.vercel/
+.codex-tmp/
+CSV Dataset/
+docs/
+graphify-out/
+outputs/
+tests/
+**/__pycache__/
+**/*.pyc
+.env*

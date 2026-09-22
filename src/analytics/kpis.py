@@ -207,13 +207,22 @@ def root_cause_drivers(view, year_from: int, year_to: int, top_n: int = 5) -> di
     country_to = view.country_year_flow[view.country_year_flow["year"] == year_to]
     c_from = country_from.groupby("country_or_area")["trade_usd"].sum()
     c_to = country_to.groupby("country_or_area")["trade_usd"].sum()
-    common = c_from.index.intersection(c_to.index)
-    c_delta = (c_to[common] - c_from[common]) / 1e9
-
-    country_declines = c_delta[c_delta < 0].nsmallest(top_n).reset_index()
-    country_declines.columns = ["country", "change_billions"]
-    country_gains = c_delta[c_delta > 0].nlargest(top_n).reset_index()
-    country_gains.columns = ["country", "change_billions"]
+    countries = c_from.index.union(c_to.index)
+    before = c_from.reindex(countries, fill_value=0)
+    after = c_to.reindex(countries, fill_value=0)
+    country_changes = pd.DataFrame(
+        {
+            "country": countries,
+            "change_billions": (after - before).values / 1e9,
+            "change_pct": (((after / before.where(before > 0)) - 1) * 100).values,
+        }
+    )
+    country_declines = country_changes[country_changes["change_billions"] < 0].nsmallest(
+        top_n, "change_billions"
+    )
+    country_gains = country_changes[country_changes["change_billions"] > 0].nlargest(
+        top_n, "change_billions"
+    )
 
     yearly = view.yearly_summary()
     v_from = yearly.loc[yearly["year"] == year_from, "trade_trillions"]

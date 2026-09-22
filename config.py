@@ -1,12 +1,26 @@
 """Application configuration and constants."""
 
+import os
+import tempfile
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
-DATA_PATH = ROOT_DIR / "CSV Dataset" / "commodity_trade_statistics_data.csv"
-OUTPUT_DIR = ROOT_DIR / "outputs"
+DATA_BASE_URL = os.getenv("DATA_BASE_URL", "").rstrip("/")
+DATA_PATH = Path(
+    os.getenv(
+        "TRADE_DATA_CSV",
+        ROOT_DIR / "CSV Dataset" / "commodity_trade_statistics_data.csv",
+    )
+)
+OUTPUT_DIR = (
+    Path(tempfile.gettempdir()) / "global-commodity-data"
+    if DATA_BASE_URL
+    else ROOT_DIR / "outputs"
+)
 PARQUET_PATH = OUTPUT_DIR / "trade_data.parquet"
-CUBES_PATH = OUTPUT_DIR / "trade_cubes.parquet"
+CUBES_PATH = OUTPUT_DIR / "trade_cubes.json"
+DATA_QUALITY_PATH = OUTPUT_DIR / "data_quality.json"
+CACHE_SCHEMA_VERSION = 2
 
 AGGREGATE_CATEGORY = "all_commodities"
 OIL_CATEGORY = "27_mineral_fuels_oils_distillation_products_etc"
@@ -14,18 +28,3 @@ OIL_CATEGORY = "27_mineral_fuels_oils_distillation_products_etc"
 FLOWS = ["Import", "Export", "Re-Import", "Re-Export"]
 
 DEFAULT_YEAR_RANGE = (1995, 2015)
-TOP_N = 15
-
-# Visual design
-CHART_TEMPLATE = "plotly_white"
-COLOR_SEQUENCE = ["#0ea5e9", "#6366f1", "#14b8a6", "#f43f5e", "#f59e0b", "#8b5cf6"]
-MAP_COLORSCALE = "Blues"
-
-UI = {
-    "accent": "#0ea5e9",
-    "accent_dark": "#0284c7",
-    "surface": "#f8fafc",
-    "border": "#e2e8f0",
-    "text": "#0f172a",
-    "muted": "#64748b",
-}
