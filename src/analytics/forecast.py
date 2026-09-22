@@ -32,6 +32,12 @@ class ForecastResult:
     series: pd.DataFrame
     slope_per_year: float | None
     r2: float | None
+    training_observations: int
+    validation_observations: int
+    mae: float | None
+    mape: float | None
+    naive_mae: float | None
+    beats_naive: bool | None
 
 
 def compute_target_plan(
@@ -77,9 +83,9 @@ def regression_forecast(
     value_col: str,
     baseline_year: int,
     horizon: int = 5,
-    min_points: int = 3,
+    min_points: int = 5,
 ) -> ForecastResult | None:
-    """Project the next `horizon` years from `baseline_year` using log-linear regression."""
+    """Project future years and validate the trend against a last-value baseline."""
     hist = trajectory[trajectory["year"] <= baseline_year].sort_values("year")
     if len(hist) < min_points:
         return None
@@ -95,6 +101,13 @@ def regression_forecast(
     model.fit(x, log_y)
     r2 = float(model.score(x, log_y))
 
+    actual, predicted, naive = [], [], []
+    for end in range(min_points, len(hist)):
+        rolling = LinearRegression().fit(x[:end], log_y[:end])
+        actual.append(values[end])
+        predicted.append(float(np.exp(rolling.predict(x[end : end + 1])[0])))
+        naive.append(values[end - 1])
+
     future_years = list(range(baseline_year + 1, baseline_year + horizon + 1))
     x_future = np.array(future_years, dtype=float).reshape(-1, 1)
     preds = np.exp(model.predict(x_future))
@@ -107,8 +120,21 @@ def regression_forecast(
     series["series"] = "forecast"
     series = series.rename(columns={value_col: "value"})
 
+    residuals = log_y - model.predict(x)
+    sigma = float(np.sqrt(np.sum(residuals**2) / (len(hist) - 2))) if len(hist) > 2 else 0.0
+    series["lower_95"] = series["value"] * np.exp(-1.96 * sigma)
+    series["upper_95"] = series["value"] * np.exp(1.96 * sigma)
+    anchor_mask = series["year"] == baseline_year
+    series.loc[anchor_mask, "lower_95"] = series.loc[anchor_mask, "value"]
+    series.loc[anchor_mask, "upper_95"] = series.loc[anchor_mask, "value"]
+
     # Approximate % change per calendar year at baseline
     slope_pct = (np.exp(model.coef_[0]) - 1) * 100
+
+    actual_arr, predicted_arr, naive_arr = map(np.asarray, (actual, predicted, naive))
+    mae = float(np.mean(np.abs(actual_arr - predicted_arr))) if actual else None
+    naive_mae = float(np.mean(np.abs(actual_arr - naive_arr))) if actual else None
+    mape = float(np.mean(np.abs((actual_arr - predicted_arr) / actual_arr)) * 100) if actual else None
 
     return ForecastResult(
         method="log-linear regression",
@@ -116,4 +142,10 @@ def regression_forecast(
         series=series,
         slope_per_year=round(slope_pct, 2),
         r2=round(r2, 3),
+        training_observations=len(hist),
+        validation_observations=len(actual),
+        mae=mae,
+        mape=mape,
+        naive_mae=naive_mae,
+        beats_naive=mae < naive_mae if mae is not None and naive_mae is not None else None,
     )

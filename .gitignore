@@ -1,19 +1,22 @@
 # Data (too large for GitHub — place CSV locally per README)
+docs/
+.codex-tmp/
+graphify-out/
 CSV Dataset/
 outputs/
 *.parquet
-
+frontend/node_modules/
+frontend/dist/
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
-.env
-
-# Streamlit
-.streamlit/secrets.toml
-
+.env*
+!.env.example
+.vercel/
+.streamlit/
 # IDE / OS
 .idea/
 .vscode/

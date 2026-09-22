@@ -1,4 +1,4 @@
-"""Map dataset country names to ISO-3166 alpha-3 for Plotly choropleth."""
+"""Map dataset country names to ISO-3166 alpha-3 for the choropleth."""
 
 from __future__ import annotations
 

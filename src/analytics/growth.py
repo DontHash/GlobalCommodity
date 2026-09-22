@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.utils.labels import category_label
+
 ARCHETYPES = (
     "Fast & sustained",
     "Sudden shock",
@@ -16,8 +18,7 @@ ARCHETYPES = (
 
 
 def _short_label(category: str) -> str:
-    import re
-    return re.sub(r"^\d+_", "", category).replace("_", " ")[:45]
+    return category_label(category)
 
 
 def classify_archetype(cagr_pct: float, yoy_std: float, max_yoy_abs: float, sign_reversals: int) -> str:
@@ -78,7 +79,7 @@ def country_growth_profiles(
                 "export_end_b": round(end_val / 1e9, 2),
             }
         )
-    return pd.DataFrame(rows).sort_values("cagr_pct", ascending=False)
+    return pd.DataFrame(rows).sort_values("cagr_pct", ascending=False) if rows else pd.DataFrame()
 
 
 def export_change_drivers(

@@ -12,14 +12,16 @@ def shock_events(yearly: pd.DataFrame) -> pd.DataFrame:
         ("2010 rebound", 2009, 2010),
     ]
     rows = []
-    peak = yearly.loc[yearly["trade_trillions"].idxmax()]
+    peak_from, peak_to = 2013, 2014
+    peak_start = yearly.loc[yearly["year"] == peak_from, "trade_trillions"]
+    peak_end = yearly.loc[yearly["year"] == peak_to, "trade_trillions"]
     rows.append(
         {
             "event": "peak year",
-            "from_year": int(peak["year"]),
-            "to_year": None,
-            "change_pct": None,
-            "volume_trillions": round(peak["trade_trillions"], 2),
+            "from_year": peak_from,
+            "to_year": peak_to,
+            "change_pct": round((peak_end.iloc[0] / peak_start.iloc[0] - 1) * 100, 1) if len(peak_start) and len(peak_end) else None,
+            "volume_trillions": round(peak_end.iloc[0], 2) if len(peak_end) else None,
         }
     )
     for name, y1, y2 in events:
