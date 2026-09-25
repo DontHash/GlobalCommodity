@@ -10,8 +10,10 @@ import {
   Map,
   Menu,
   SearchCode,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { categoryOptionLabel } from "../format";
 import { MultiSelect, RangeSlider } from "./ui";
 
@@ -58,24 +60,31 @@ function Filters({ options, filters, onChange }) {
   );
 }
 
-export function Sidebar({ open, collapsed, onClose, onToggle, page, onPage, options, filters, onFilters }) {
+export function Sidebar({ open, mobilePanel, collapsed, onClose, onToggle, page, onPage, options, filters, onFilters }) {
+  const closeRef = useRef(null);
+  const returnFocusRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    returnFocusRef.current = document.activeElement;
+    closeRef.current?.focus();
+    const closeOnEscape = (event) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", closeOnEscape);
+    return () => { window.removeEventListener("keydown", closeOnEscape); returnFocusRef.current?.focus(); };
+  }, [open]);
   return (
-    <aside className={`sidebar ${open ? "open" : ""} ${collapsed ? "collapsed" : ""}`} aria-label="Dashboard navigation">
+    <aside id="dashboard-drawer" className={`sidebar ${open ? "open" : ""} ${collapsed ? "collapsed" : ""} mobile-${mobilePanel || "none"}`} aria-label={mobilePanel === "filters" ? "Dashboard filters" : "Dashboard navigation"} aria-modal={open || undefined} role={open ? "dialog" : undefined}>
       <div className="sidebar-header mb-7 flex items-center justify-between">
-        <div className="flex items-center gap-3"><button className={`brand-mark ${collapsed ? "is-collapsed" : ""}`} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={onToggle}><Globe2 size={22} /></button><div className="brand-copy"><div className="text-[15px] font-semibold">Commodity Trade</div><div className="text-[11px] text-[#222420]">UN Comtrade analytics</div></div></div>
-        <button className="mobile-close md:hidden" aria-label="Close navigation" onClick={onClose}><X size={20} /></button>
+        <div className="flex items-center gap-3"><button className={`brand-mark ${collapsed ? "is-collapsed" : ""}`} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={onToggle}><Globe2 size={22} /></button><div className="brand-copy"><div className="text-[15px] font-semibold"><span className="mobile-panel-title">{mobilePanel === "filters" ? "Filters" : "Navigation"}</span><span className="desktop-brand-title">Commodity Trade</span></div><div className="text-[11px] text-[#222420]">UN Comtrade analytics</div></div></div>
+        <button ref={closeRef} className="mobile-close md:hidden" aria-label="Close drawer" onClick={onClose}><X size={20} /></button>
       </div>
       <div className="sidebar-body">
-        <Filters options={options} filters={filters} onChange={onFilters} />
-        <div className="sidebar-label">Navigate</div>
-        <nav className="grid gap-1">
-          {pages.map(([key, label, Icon]) => <button key={key} className={`nav-button ${page === key ? "active" : ""}`} onClick={() => { onPage(key); onClose(); }}><Icon size={17} strokeWidth={1.8} /><span>{label}</span></button>)}
-        </nav>
+        <div className="sidebar-filters"><Filters options={options} filters={filters} onChange={onFilters} /></div>
+        <div className="sidebar-navigation"><div className="sidebar-label">Navigate</div><nav className="grid gap-1">{pages.map(([key, label, Icon]) => <button key={key} className={`nav-button ${page === key ? "active" : ""}`} onClick={() => { onPage(key); onClose(); }}><Icon size={17} strokeWidth={1.8} /><span>{label}</span></button>)}</nav></div>
       </div>
     </aside>
   );
 }
 
-export function MobileHeader({ onMenu, label }) {
-  return <header className="mobile-header"><button aria-label="Open navigation" onClick={onMenu}><Menu size={22} /></button><span className="text-sm font-semibold">{label}</span><Globe2 size={20} /></header>;
+export function MobileHeader({ onMenu, onFilters, label, panel }) {
+  return <header className="mobile-header"><button aria-label="Open navigation" aria-controls="dashboard-drawer" aria-expanded={panel === "navigation"} onClick={onMenu}><Menu size={22} /></button><span className="mobile-page-label">{label}</span><button className="mobile-filter-button" aria-label="Open filters" aria-controls="dashboard-drawer" aria-expanded={panel === "filters"} onClick={onFilters}><SlidersHorizontal size={17} /><span>Filters</span></button></header>;
 }

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from config import OIL_CATEGORY
+from src.data.country_iso import actual_country_rows
 
 
 @dataclass
@@ -203,8 +204,9 @@ def root_cause_drivers(view, year_from: int, year_to: int, top_n: int = 5) -> di
     cat_declines = cat_full[cat_full["change_billions"] < 0].nsmallest(top_n, "change_billions")
     cat_gains = cat_full[cat_full["change_billions"] > 0].nlargest(top_n, "change_billions")
 
-    country_from = view.country_year_flow[view.country_year_flow["year"] == year_from]
-    country_to = view.country_year_flow[view.country_year_flow["year"] == year_to]
+    countries_only = actual_country_rows(view.country_year_flow)
+    country_from = countries_only[countries_only["year"] == year_from]
+    country_to = countries_only[countries_only["year"] == year_to]
     c_from = country_from.groupby("country_or_area")["trade_usd"].sum()
     c_to = country_to.groupby("country_or_area")["trade_usd"].sum()
     countries = c_from.index.union(c_to.index)
@@ -245,7 +247,7 @@ def root_cause_drivers(view, year_from: int, year_to: int, top_n: int = 5) -> di
 
 def underperformers(view, year: int, top_n: int = 5) -> pd.DataFrame:
     """Countries below median YoY in a given year."""
-    cy = view.country_year_flow
+    cy = actual_country_rows(view.country_year_flow)
     y1, y2 = year - 1, year
     b = cy[cy["year"] == y1].groupby("country_or_area")["trade_usd"].sum()
     a = cy[cy["year"] == y2].groupby("country_or_area")["trade_usd"].sum()

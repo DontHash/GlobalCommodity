@@ -3,11 +3,13 @@ import unittest
 import pandas as pd
 
 from src.analytics.kpis import root_cause_drivers
-from src.api import default_countries
+from src.api import country_period_ranking, default_countries
 from src.data.context import _build_filtered_view_from_cubes
+from src.data.country_iso import actual_country_rows
 from src.data.cubes import _build_cubes_from_df
 from src.data.loader import _random_sample
 from src.data.validation import validate_trade_data
+from src.processing.aggregate import flow_by_year
 from src.utils.labels import CATEGORY_LABEL_OVERRIDES, category_label
 
 
@@ -42,6 +44,16 @@ def trade_frame() -> pd.DataFrame:
 
 
 class DataPipelineTest(unittest.TestCase):
+    def test_flow_series_preserves_missing_observations(self) -> None:
+        rows = pd.DataFrame({
+            "year": [2000, 2001],
+            "flow": ["Export", "Import"],
+            "trade_usd": [1e12, 2e12],
+        })
+        result = flow_by_year(rows).set_index("year")
+        self.assertTrue(pd.isna(result.loc[2000, "Import"]))
+        self.assertTrue(pd.isna(result.loc[2001, "Export"]))
+
     def test_canonical_totals_do_not_add_aggregate_and_detail_rows(self) -> None:
         cubes = _build_cubes_from_df(trade_frame())
         totals = cubes.country_year_flow.set_index(["country_or_area", "year", "flow"])
@@ -99,22 +111,38 @@ class DataPipelineTest(unittest.TestCase):
             self.assertNotRegex(label.lower(), r"\b(thereof|nes|etc|miscellaneous|articles|manufactures|related)\b")
 
     def test_driver_tables_include_disappearing_and_new_countries(self) -> None:
-        frame = trade_frame()
-        new_country = frame[(frame["country_or_area"] == "A") & (frame["year"] == 2001)].iloc[[0]].copy()
-        new_country["country_or_area"] = "C"
+        frame = trade_frame().replace({"country_or_area": {"A": "USA", "B": "China"}})
+        new_country = frame[(frame["country_or_area"] == "USA") & (frame["year"] == 2001)].iloc[[0]].copy()
+        new_country["country_or_area"] = "Germany"
         new_country["trade_usd"] = 50
         cubes = _build_cubes_from_df(pd.concat([frame, new_country], ignore_index=True))
         view = _build_filtered_view_from_cubes(cubes, (2000, 2001), None, None, ("Export",))
         drivers = root_cause_drivers(view, 2000, 2001)
-        self.assertEqual(drivers["top_country_declines"].iloc[0]["country"], "B")
+        self.assertEqual(drivers["top_country_declines"].iloc[0]["country"], "China")
         self.assertEqual(drivers["top_country_declines"].iloc[0]["change_pct"], -100)
-        self.assertEqual(drivers["top_country_gains"].iloc[0]["country"], "C")
+        self.assertEqual(drivers["top_country_gains"].iloc[0]["country"], "Germany")
         self.assertTrue(pd.isna(drivers["top_country_gains"].iloc[0]["change_pct"]))
         self.assertFalse(drivers["top_category_declines"].empty)
 
     def test_preferred_country_defaults(self) -> None:
         options = ["Afghanistan", "China", "Germany", "USA", "Zimbabwe"]
         self.assertEqual(default_countries(options), ["USA", "China", "Germany"])
+
+    def test_country_views_exclude_aggregates_and_rank_before_limiting(self) -> None:
+        rows = pd.DataFrame(
+            {
+                "country_or_area": ["USA", "China", "Germany", "EU-28", "USA", "China", "Germany", "EU-28"],
+                "year": [2000, 2000, 2000, 2000, 2001, 2001, 2001, 2001],
+                "flow": ["Export"] * 8,
+                "trade_usd": [100, 100, 100, 1000, 200, 100, 100, 1000],
+            }
+        )
+        self.assertEqual(set(actual_country_rows(rows)["country_or_area"]), {"USA", "China", "Germany"})
+        ranking = country_period_ranking(rows, "Export", 2)
+        self.assertEqual(ranking["country_or_area"].tolist(), ["USA", "China"])
+        self.assertEqual(ranking["rank"].tolist(), [1, 2])
+        self.assertAlmostEqual(ranking.iloc[0]["share_pct"], 300 / 700 * 100)
+        self.assertAlmostEqual(ranking.iloc[0]["yoy_pct"], 100.0)
 
     def test_preview_is_a_reproducible_random_source_sample(self) -> None:
         frame = pd.DataFrame({

@@ -222,3 +222,13 @@ def attach_iso3(df, country_col: str = "country_or_area") -> "pd.DataFrame":
     out = df.copy()
     out["iso3"] = out[country_col].map(COUNTRY_TO_ISO3)
     return out.dropna(subset=["iso3"])
+
+
+def is_actual_country(value: object) -> bool:
+    """Return whether a reporting-area label maps to an ISO country/territory."""
+    return COUNTRY_TO_ISO3.get(str(value)) is not None
+
+
+def actual_country_rows(df, country_col: str = "country_or_area"):
+    """Remove aggregate and historical reporting areas from country-labelled views."""
+    return df[df[country_col].map(is_actual_country)].copy()

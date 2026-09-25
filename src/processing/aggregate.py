@@ -13,7 +13,7 @@ def flow_by_year(df: pd.DataFrame) -> pd.DataFrame:
     wide = (
         df.groupby(["year", "flow"])["trade_usd"]
         .sum()
-        .unstack(fill_value=0)
+        .unstack()
         .reset_index()
     )
     for col in wide.columns:

@@ -4,8 +4,18 @@ export function compact(value, currency = false) {
   const abs = Math.abs(number);
   const units = [[1e12, "T"], [1e9, "B"], [1e6, "M"]];
   const unit = units.find(([size]) => abs >= size);
-  const formatted = unit ? `${(number / unit[0]).toFixed(abs >= unit[0] * 100 ? 0 : 1)}${unit[1]}` : number.toLocaleString(undefined, { useGrouping: false, maximumFractionDigits: 3 });
-  return currency ? `$${formatted}` : formatted;
+  const scaled = unit ? abs / unit[0] : abs;
+  const formatted = scaled.toLocaleString("en-US", {
+    maximumFractionDigits: unit?.[1] === "T" ? 2 : unit ? 1 : 3,
+  });
+  return `${number < 0 ? "-" : ""}${currency ? "$" : ""}${formatted}${unit?.[1] || ""}`;
+}
+
+export const scaledCurrency = (value, scale = 1) => compact(Number(value) * scale, true);
+
+export function exactCurrency(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
 export const percent = (value) => `${Number(value) > 0 ? "+" : ""}${Number(value).toFixed(1)}%`;

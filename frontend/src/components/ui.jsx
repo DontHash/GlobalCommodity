@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, RefreshCw, Search, TrendingDown, TrendingUp, X } from "lucide-react";
-import { compact, titleCase, yearLabel } from "../format";
+import { categoryOptionLabel, compact, scaledCurrency, titleCase, yearLabel } from "../format";
 
 const pageDescriptionHeadings = {
   "Executive summary": "Trade at a glance",
@@ -14,8 +14,21 @@ const pageDescriptionHeadings = {
   "Case study": "The boom, break, and aftermath",
 };
 
-export function Card({ children, className = "" }) {
-  return <section className={`card ${className}`}>{children}</section>;
+export function Card({ children, className = "", title, hint }) {
+  return <section className={`card ${className}`}>{(title || hint) && <header className="card-header">{title && <h2 className="card-title">{title}</h2>}{hint && <p className="card-hint">{hint}</p>}</header>}{children}</section>;
+}
+
+const selectionSummary = (values, emptyLabel, format = titleCase) => !values?.length ? emptyLabel : `${values.slice(0, 2).map(format).join(", ")}${values.length > 2 ? ` +${values.length - 2}` : ""}`;
+
+export function ActiveFilters({ filters, options, onReset, resetDisabled }) {
+  const items = [
+    `${filters.year_from}–${filters.year_to}`,
+    selectionSummary(filters.countries, "All countries", String),
+    selectionSummary(filters.categories, "All categories", (value) => categoryOptionLabel(value, options.category_labels)),
+    filters.flows?.length === options.flows.length ? "All flows" : selectionSummary(filters.flows, "No flows"),
+    filters.exclude_aggregate ? "Aggregate category excluded" : "Aggregate category included",
+  ];
+  return <section className="active-filters" aria-label="Applied filters"><div><div className="active-filters-label">Applied filters</div><div className="active-filter-list" aria-live="polite">{items.map((item) => <span key={item}>{item}</span>)}</div></div><button className="button secondary reset-filters" type="button" disabled={resetDisabled} onClick={onReset}><RefreshCw size={14} />Reset filters</button></section>;
 }
 
 export function PageIntro({ title, subtitle }) {
@@ -33,7 +46,8 @@ export function Section({ title, hint, children }) {
   );
 }
 
-export function StatCard({ label, value, delta, direction = "neutral", context, colored = false }) {
+export function StatCard({ label, value, delta, direction = "neutral", context, colored = false, loading = false }) {
+  if (loading) return <Card className="white metric-skeleton"><div className="skeleton metric-skeleton-label" /><div className="skeleton metric-skeleton-value" /><div className="skeleton metric-skeleton-context" /></Card>;
   return (
     <Card className={colored ? `metric-tone metric-${direction}` : "white"}>
       <div className="metric-label">{label}</div>
@@ -128,6 +142,10 @@ export function Notice({ children, tone = "info" }) {
   return <div className={`notice ${tone}`}>{children}</div>;
 }
 
+export function NoData({ onReset, message = "No trade records found for the selected combination." }) {
+  return <div className="no-data" role="status"><p>{message}</p>{onReset && <button className="button secondary" type="button" onClick={onReset}><RefreshCw size={14} />Reset filters</button>}</div>;
+}
+
 export function RangeSlider({ label, min, max, from, to, onChange, dark = false }) {
   const span = Math.max(1, max - min);
   const left = ((from - min) / span) * 100;
@@ -153,7 +171,11 @@ export function DataTable({ rows = [], columns, columnLabels = {}, empty = "No r
         <thead><tr>{keys.map((key) => <th key={key}>{columnLabels[key] || titleCase(key)}</th>)}</tr></thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={index}>{keys.map((key) => <td key={key}>{formatCell(row[key], key)}</td>)}</tr>
+            <tr key={index}>{keys.map((key) => {
+              const value = row[key];
+              const isName = /(country|area|category|label)/i.test(key);
+              return <td className={isName ? "data-name-cell" : undefined} title={isName && value ? String(value) : undefined} key={key}>{formatCell(value, key)}</td>;
+            })}</tr>
           ))}
         </tbody>
       </table>
@@ -161,11 +183,19 @@ export function DataTable({ rows = [], columns, columnLabels = {}, empty = "No r
   );
 }
 
+export function DataDisclosure({ rows = [], columns, columnLabels }) {
+  if (!rows.length) return null;
+  return <details className="chart-data"><summary>View data</summary><DataTable rows={rows} columns={columns} columnLabels={columnLabels} /></details>;
+}
+
 function formatCell(value, key) {
   if (value === null || value === undefined) return "-";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (key.toLowerCase().includes("year")) return yearLabel(value);
+    if (key.includes("trillion")) return scaledCurrency(value, 1e12);
+    if (key.includes("billions") || /(?:export_start_b|export_end_b|value_change_b|volume_effect_b|price_effect_b)$/.test(key)) return scaledCurrency(value, 1e9);
+    if (key.includes("millions")) return scaledCurrency(value, 1e6);
     if (key.includes("usd")) return compact(value, true);
     if (key.includes("pct") || key.includes("share")) return Number(value).toFixed(2);
     return compact(value);
@@ -217,5 +247,5 @@ export function ErrorState({ error, retry }) {
 
 export function ScopeFooter({ scope }) {
   if (!scope) return null;
-  return <footer className="footer-note">Source: {scope.source} · Indexed: {scope.indexed} · Preset: {scope.preset} · Period: {scope.period?.join(" to ")} · Scope: {scope.profile?.rows ? compact(scope.profile.rows) : "aggregated"} records, {scope.profile?.countries || 0} countries</footer>;
+  return <footer className="footer-note">Source: {scope.source} · Indexed: {scope.indexed} · Preset: {scope.preset} · Period: {scope.period?.join(" to ")} · Scope: {scope.profile?.rows ? compact(scope.profile.rows) : "aggregated"} records, {scope.actual_countries ?? scope.profile?.countries ?? 0} countries{scope.non_country_areas ? ` (${scope.non_country_areas} aggregate or historical areas excluded from country views)` : ""}</footer>;
 }

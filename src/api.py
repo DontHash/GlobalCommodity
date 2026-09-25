@@ -33,10 +33,10 @@ from src.analytics.mining import (
 )
 from src.analytics.story import shock_events
 from src.data.context import FilteredView, build_filtered_view
-from src.data.country_iso import attach_iso3
+from src.data.country_iso import actual_country_rows, attach_iso3, is_actual_country
 from src.data.cubes import load_trade_cubes
 from src.data.loader import load_filtered_sample
-from src.processing.aggregate import correlation_matrix
+from src.processing.aggregate import correlation_matrix, country_rankings
 from src.utils.labels import category_label
 
 
@@ -121,6 +121,45 @@ def default_countries(options: list[str], limit: int = 3) -> list[str]:
     return (preferred + [country for country in options if country not in preferred])[:limit]
 
 
+def country_year_metrics(df: pd.DataFrame, flow: str | None = None) -> pd.DataFrame:
+    """Actual-country yearly values with rank, selected-scope share, and YoY change."""
+    data = actual_country_rows(df)
+    if flow:
+        data = data[data["flow"] == flow]
+    out = (
+        data.groupby(["year", "country_or_area"], as_index=False)["trade_usd"]
+        .sum()
+        .sort_values(["country_or_area", "year"])
+    )
+    if out.empty:
+        return out
+    out["yoy_pct"] = out.groupby("country_or_area")["trade_usd"].pct_change() * 100
+    out["share_pct"] = out["trade_usd"] / out.groupby("year")["trade_usd"].transform("sum") * 100
+    out["rank"] = out.groupby("year")["trade_usd"].rank(method="first", ascending=False).astype(int)
+    out["trade_billions"] = out["trade_usd"] / 1e9
+    return out.sort_values(["year", "rank"])
+
+
+def country_period_ranking(
+    df: pd.DataFrame, flow: str | None = None, top_n: int | None = None
+) -> pd.DataFrame:
+    """Actual-country period ranking enriched before applying the requested limit."""
+    data = actual_country_rows(df)
+    ranking = country_rankings(data, flow, top_n=None)
+    if ranking.empty:
+        return ranking
+    ranking["rank"] = range(1, len(ranking) + 1)
+    total = ranking["trade_usd"].sum()
+    ranking["share_pct"] = ranking["trade_usd"] / total * 100 if total else 0.0
+    yearly = country_year_metrics(data, flow)
+    if not yearly.empty:
+        latest = yearly.sort_values("year").groupby("country_or_area", as_index=False).tail(1)[
+            ["country_or_area", "yoy_pct"]
+        ]
+        ranking = ranking.merge(latest, on="country_or_area", how="left")
+    return ranking.head(top_n) if top_n is not None else ranking
+
+
 def diagnostics(df: pd.DataFrame | None) -> dict:
     return dict(df.attrs.get("diagnostics", {})) if df is not None else {}
 
@@ -139,6 +178,7 @@ def driver_payload(result: dict | None) -> dict | None:
 
 def scope_payload(ctx: RequestContext) -> dict:
     profile = ctx.view.profile
+    actual_countries = actual_country_rows(ctx.view.country_year_flow)["country_or_area"].nunique()
     return {
         "profile": profile,
         "period": [ctx.year_from, ctx.year_to],
@@ -149,6 +189,8 @@ def scope_payload(ctx: RequestContext) -> dict:
         "total_basis": ctx.view.total_basis,
         "conditional_basket": ctx.view.is_conditional_basket,
         "aggregate_excluded": ctx.exclude_aggregate,
+        "actual_countries": int(actual_countries),
+        "non_country_areas": max(0, int(profile["countries"] - actual_countries)),
         "source": "UN Comtrade",
         "indexed": "2026-06-17",
     }
@@ -166,7 +208,7 @@ def filter_options() -> dict:
     return {
         "year_min": meta.year_min,
         "year_max": meta.year_max,
-        "countries": list(meta.countries),
+        "countries": [item for item in meta.countries if is_actual_country(item)],
         "categories": categories,
         "category_labels": {item: category_label(item) for item in categories},
         "flows": FLOWS,
@@ -189,8 +231,7 @@ def overview(
     focus = focus_year if focus_year in years else years[-1]
     y_from = compare_from if compare_from in years else years[0]
     y_to = compare_to if compare_to in years else years[-1]
-    top_countries = ctx.view.country_totals().head(10).copy()
-    top_countries["trade_billions"] = top_countries["trade_usd"] / 1e9
+    top_countries = country_period_ranking(ctx.view.country_year_flow, top_n=10)
     top_categories = ctx.view.category_totals(10).copy()
     drivers = root_cause_drivers(ctx.view, y_from, y_to) if y_from < y_to else None
     return {
@@ -231,18 +272,27 @@ def regions(
     if map_metric not in {"total_trade", "trade_balance", "exports", "imports"}:
         raise HTTPException(422, "Unsupported map metric.")
     metrics = ctx.view.map_metrics(selected_year, map_metric)
+    if map_metric != "trade_balance":
+        metric_flow = {"exports": "Export", "imports": "Import"}.get(map_metric)
+        metric_meta = country_year_metrics(ctx.view.country_year_flow, metric_flow)
+        metric_meta = metric_meta[metric_meta["year"] == selected_year][
+            ["country_or_area", "rank", "share_pct", "yoy_pct"]
+        ]
+        metrics = metrics.merge(metric_meta, on="country_or_area", how="left")
     geo = attach_iso3(metrics)
     flow = None if rank_flow == "All" else rank_flow
-    ranking = ctx.view.country_totals(flow).head(top_n).copy()
-    ranking["trade_billions"] = ranking["trade_usd"] / 1e9
-    balance = ctx.view.trade_balance()
-    surplus = balance[balance["balance_billions"] >= 0].head(15).reset_index()
-    deficit = balance[balance["balance_billions"] < 0].tail(15).reset_index()
-    options = sorted(ctx.view.country_year_flow["country_or_area"].unique())
+    ranking = country_period_ranking(ctx.view.country_year_flow, flow, top_n)
+    balance = actual_country_rows(ctx.view.trade_balance().reset_index())
+    surplus = balance[balance["balance_billions"] >= 0].head(15)
+    deficit = balance[balance["balance_billions"] < 0].tail(15)
+    yearly_countries = country_year_metrics(ctx.view.country_year_flow)
+    options = sorted(yearly_countries["country_or_area"].unique())
     selected = compare_countries or default_countries(options)
-    comparison = ctx.view.country_year(selected).copy() if selected else pd.DataFrame()
-    if not comparison.empty:
-        comparison["trade_billions"] = comparison["trade_usd"] / 1e9
+    comparison = (
+        yearly_countries[yearly_countries["country_or_area"].isin(selected)].copy()
+        if selected
+        else pd.DataFrame()
+    )
     return {
         "scope": scope_payload(ctx),
         "years": years,
@@ -281,7 +331,8 @@ def growth(
     ctx: RequestContext = Depends(request_context),
 ) -> dict:
     years = list(range(ctx.year_from, ctx.year_to + 1))
-    export_series = ctx.view.country_export_series()
+    actual_cyf = actual_country_rows(ctx.view.country_year_flow)
+    export_series = country_year_metrics(actual_cyf, "Export")
     country_options = sorted(export_series["country_or_area"].unique()) if not export_series.empty else []
     y_from = growth_from if growth_from in years else years[0]
     y_to = growth_to if growth_to in years else years[-1]
@@ -302,14 +353,14 @@ def growth(
         else pd.DataFrame()
     )
 
-    detail = ctx.view.country_category_year
+    detail = actual_country_rows(ctx.view.country_category_year)
     div_flows = sorted(detail["flow"].unique(), key=lambda value: (value != "Export", value)) if not detail.empty else []
     div_flow = diversification_flow if diversification_flow in div_flows else (div_flows[0] if div_flows else None)
     div_metrics = (
         concentration_by_year(
             detail,
             div_flow,
-            None if ctx.view.is_conditional_basket else ctx.view.country_year_flow,
+            None if ctx.view.is_conditional_basket else actual_cyf,
             conditional=ctx.view.is_conditional_basket,
         )
         if div_flow
@@ -537,7 +588,7 @@ def models(
         result = rf_yoy_surprise(yearly, train_end)
         return {**base, "rows": records(result), "diagnostics": diagnostics(result)}
     if model_name == "clusters":
-        shocks, summary, k, score = country_shock_clusters_from_cyf(ctx.view.country_year_flow, (shock_a_from, shock_a_to), (shock_b_from, shock_b_to))
+        shocks, summary, k, score = country_shock_clusters_from_cyf(actual_country_rows(ctx.view.country_year_flow), (shock_a_from, shock_a_to), (shock_b_from, shock_b_to))
         return {**base, "rows": records(shocks.reset_index()), "summary": records(summary.reset_index()), "k": k, "silhouette": score if np.isfinite(score) else None}
     if model_name == "correlation":
         sample = load_filtered_sample((ctx.year_from, ctx.year_to), ctx.countries, ctx.categories, ctx.flows, ctx.exclude_aggregate, 50_000)
